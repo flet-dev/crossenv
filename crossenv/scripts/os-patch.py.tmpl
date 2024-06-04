@@ -4,11 +4,11 @@ from collections import namedtuple
 uname_result_type = namedtuple('uname_result',
         'sysname nodename release version machine')
 _uname_result = uname_result_type(
-        {{repr(self.host_sysname.title())}},
+        {{repr(self.host_sysname)}},
         'build',
         {{repr(self.host_release)}},
         '',
-        {{repr(self.host_machine)}})
+        {{repr(self.host_arch)}})
 
 def uname():
     return _uname_result
