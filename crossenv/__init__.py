@@ -540,7 +540,7 @@ class CrossEnvBuilder(venv.EnvBuilder):
                     "appletvsimulator": ("AppleTVSimulator", True),
                     "watchos": ("AppleWatch", False),
                     "watchsimulator": ("AppleWatchSimulator", True),
-                }[host_info[2]]
+                }[host_info[3]]
             else:
                 # On all other platforms, machine == arch
                 self.host_machine = self.host_arch
