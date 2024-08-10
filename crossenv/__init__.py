@@ -545,9 +545,9 @@ class CrossEnvBuilder(venv.EnvBuilder):
             }
             if len(host_info) > 1 and host_info[-1] in platform2uname:
                 # Test that this is still a special case when we can.
-                self.host_machine = platform2uname[host_info[-1]]
+                self.host_arch = platform2uname[host_info[-1]]
             else:
-                self.host_machine = self.host_gnu_type.split("-")[0]
+                self.host_arch = self.host_gnu_type.split("-")[0]
 
             # iOS/tvOS/watchOS return the device type as the machine, have a separate
             # concept of being a simulator, and use arm64 rather than aarch64 as an
