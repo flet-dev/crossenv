@@ -37,6 +37,25 @@ def ios_ver(system="", release="", model="", is_simulator=False):
 
     return IOSVersionInfo(system, release, model, {{repr(self.host_is_simulator)}})
 
+AndroidVer = collections.namedtuple(
+    "AndroidVer", "release api_level manufacturer model device is_emulator")
+
+def android_ver(release="", api_level=0, manufacturer="", model="", device="",
+                is_emulator=False):
+
+    import sysconfig
+    platform_parts = sysconfig.get_platform().split("-")
+
+    release = {{repr(self.host_release)}}
+    api_level = int(platform_parts[1])
+    manufacturer = "Google"
+    model = "Android"
+    device = "Pixel"
+    is_emulator = "1" if is_emulator else "0"
+
+    return AndroidVer(
+        release, api_level, manufacturer, model, device, is_emulator)
+
 # Old, deprecated functions, but we support back to 3.5
 if '_linux_distribution' in globals():
     def _linux_distribution(distname, version, id, supported_dists,
