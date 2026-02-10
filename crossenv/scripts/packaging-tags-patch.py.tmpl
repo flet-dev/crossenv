@@ -6,3 +6,30 @@ def _linux_platforms():
     arch = _normalize_string({{repr(self.host_machine)}})
     archs = {"armv8l": ["armv8l", "armv7l"]}.get(arch, [arch])
     yield from archs
+
+
+if 'android_platforms' in globals():
+    _original_android_platforms = android_platforms
+
+    def android_platforms(api_level=None, abi=None):
+        yield from _original_android_platforms(api_level=api_level, abi=abi)
+
+        if abi is None:
+            import sysconfig
+            abi = sysconfig.get_platform().split("-")[-1]
+        abi = _normalize_string(abi)
+
+        abi_alias = {
+            "aarch64": "arm64_v8a",
+            "i686": "x86",
+            "arm": "armeabi_v7a",
+        }.get(abi)
+        if abi_alias is None:
+            return
+
+        if api_level is None:
+            api_level = platform.android_ver().api_level  # type: ignore[attr-defined]
+
+        min_api_level = 16
+        for ver in range(api_level, min_api_level - 1, -1):
+            yield f"android_{ver}_{abi_alias}"

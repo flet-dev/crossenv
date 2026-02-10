@@ -43,11 +43,28 @@ AndroidVer = collections.namedtuple(
 def android_ver(release="", api_level=0, manufacturer="", model="", device="",
                 is_emulator=False):
 
+    import re
+    import sys
     import sysconfig
     platform_parts = sysconfig.get_platform().split("-")
 
     release = {{repr(self.host_release)}}
-    api_level = int(platform_parts[1])
+    if sys.version_info[:2] >= (3, 13):
+        # Python 3.13+ Android support can report platform as android-<arch>
+        # (e.g. android-aarch64) instead of android-<api>-<arch>.
+        api_level = sysconfig.get_config_var("ANDROID_API_LEVEL")
+        if api_level is None:
+            if len(platform_parts) > 1 and re.fullmatch(r"\d+", platform_parts[1]):
+                api_level = int(platform_parts[1])
+            else:
+                raise ValueError(
+                    "Unable to determine Android API level from platform: "
+                    f"{sysconfig.get_platform()}"
+                )
+        else:
+            api_level = int(api_level)
+    else:
+        api_level = int(platform_parts[1])
     manufacturer = "Google"
     model = "Android"
     device = "Pixel"
