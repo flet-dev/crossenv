@@ -2,28 +2,36 @@ _original_find_spec = PathFinder.find_spec
 
 # well after the bootstrap process, and before we've patched, so it's safe to
 # import normally here
-import os
 import sys
 
-# Resolve the stdlib path from `os.__file__` instead of asking sysconfig.
+# Resolve the **host** stdlib path from `sys.base_prefix` instead of asking
+# sysconfig.
 #
-# On Python 3.14, sysconfig deferred `_init_config_vars` to first call. If
-# `_PathFinder_find_spec` is the first thing to call `sysconfig.get_path`,
-# that triggers `_init_posix` -> `_get_sysconfigdata` -> `import_module(...)`
-# -> `PathFinder.find_spec` (us again) -> `sysconfig.get_path()` -> recursion
-# into half-initialized sysconfig, raising `AttributeError: 'installed_base'`
-# from `_subst_vars` because `_CONFIG_VARS` hasn't been populated yet.
+# The patched find_spec wants to inject `sys.build_path` *just before the
+# stdlib entry of `sys.path`*, so pip/setuptools/etc. can resolve modules from
+# the build Python's site-packages without seeing them as installed for the
+# cross interpreter. We need the **host** stdlib path here (not the build
+# Python's), because crossenv's site.py explicitly removes the build Python's
+# stdlib from `sys.path` before any of this runs — so looking up the build
+# stdlib in `sys.path` always misses, and `sys.build_path` is never inserted.
 #
-# We can't pre-resolve via sysconfig either: crossenv's `sysconfig-patch`
-# asserts `_CONFIG_VARS is None` at patch time, so initializing sysconfig
-# here breaks that patch's invariant downstream.
+# Previously this was done with `sysconfig.get_path('stdlib')`, which after
+# crossenv's sysconfig patches returns the host stdlib. On Python 3.14 that
+# call recurses into half-initialized sysconfig via the lazy
+# `_init_config_vars` path (importing `_sysconfigdata__*` re-enters find_spec,
+# which calls `sysconfig.get_path` again, raising
+# `AttributeError: 'installed_base'`). We also can't eagerly initialize
+# sysconfig here, because crossenv's `sysconfig-patch.py.tmpl` asserts
+# `_CONFIG_VARS is None` at patch time.
 #
-# `os.__file__` is the path to the loaded `os.py` from the build interpreter's
-# stdlib, and every standard CPython layout places that file at
-# `<stdlib>/os.py`. By the time this template runs `os` has already been
-# imported (see crossenv's site.py), so `os.__file__` is available and
-# stable for the lifetime of the interpreter.
-_STDLIB_PATH = os.path.dirname(os.path.abspath(os.__file__))
+# `sys.base_prefix` is set from `PYTHONHOME` at interpreter startup (the
+# cross-python wrapper sets it to the host Python install). The host stdlib
+# is reliably at `<base_prefix>/lib/python<X.Y>` for the standard CPython
+# layouts we support, which is exactly the entry crossenv leaves in
+# `sys.path`.
+_HOST_STDLIB = "{}/lib/python{}.{}".format(
+    sys.base_prefix, sys.version_info[0], sys.version_info[1]
+)
 
 @classmethod
 def _PathFinder_find_spec(cls, fullname, path=None, target=None):
@@ -37,7 +45,7 @@ def _PathFinder_find_spec(cls, fullname, path=None, target=None):
     if path is None:
         path = list(sys.path)
         try:
-            i = path.index(_STDLIB_PATH)
+            i = path.index(_HOST_STDLIB)
             path[i:i] = sys.build_path
         except ValueError:
             pass
