@@ -5,6 +5,20 @@ _original_find_spec = PathFinder.find_spec
 import sysconfig
 import sys
 
+# Resolve and cache the stdlib path before installing the PathFinder patch.
+# Python 3.14's sysconfig defers `_init_config_vars` until the first call to
+# get_path/get_paths/get_config_vars. If we let the patched find_spec be the
+# first thing to ask, that call triggers `_init_posix` -> `_get_sysconfigdata`
+# -> `import_module(_sysconfigdata__*)` -> PathFinder.find_spec (us, again) ->
+# sysconfig.get_path() -> recursion into half-initialized sysconfig, which
+# raises `AttributeError: 'installed_base'` from `_subst_vars` because
+# `_CONFIG_VARS` hasn't been populated yet.
+#
+# By forcing the resolve here, sysconfig is fully initialized once, the result
+# is constant for this interpreter, and the patched find_spec never has to
+# re-enter sysconfig.
+_STDLIB_PATH = sysconfig.get_path('stdlib')
+
 @classmethod
 def _PathFinder_find_spec(cls, fullname, path=None, target=None):
     """Monkey patch to PathFinder.find_spec that silently inserts
@@ -15,10 +29,9 @@ def _PathFinder_find_spec(cls, fullname, path=None, target=None):
     environments."""
 
     if path is None:
-        stdlib = sysconfig.get_path('stdlib')
         path = list(sys.path)
         try:
-            i = path.index(stdlib)
+            i = path.index(_STDLIB_PATH)
             path[i:i] = sys.build_path
         except ValueError:
             pass
