@@ -938,6 +938,23 @@ class CrossEnvBuilder(venv.EnvBuilder):
         build_time_vars['BUILD_GNU_TYPE'] = \
                 sysconfig.get_config_var('BUILD_GNU_TYPE')
 
+        # Override a small set of config vars with the *build* Python's values
+        # so that build-side code that consumes them at runtime still works.
+        # Notably Python 3.14's ctypes/__init__.py does
+        #     pythonapi = PyDLL(_sysconfig.get_config_var("LDLIBRARY"))
+        # at module import. With the patched sysconfig reporting the host
+        # value (e.g. `libpython3.14.so` for an Android cross-env), the build
+        # platform's dlopen can't resolve the name and ctypes fails to import
+        # entirely - which breaks `cross-python -m pip ...` and anything else
+        # that touches `ctypes`. Recipes/build scripts that need the host
+        # library name should either hard-code it or read it from the raw
+        # host sysconfigdata module directly rather than via the patched
+        # sysconfig.
+        for key in ('LDLIBRARY', 'INSTSONAME'):
+            build_value = sysconfig.get_config_var(key)
+            if build_value is not None:
+                build_time_vars[key] = build_value
+
         # Overrides from --config_var options
         for key, value in self.host_config_vars.items():
             build_time_vars[key] = value

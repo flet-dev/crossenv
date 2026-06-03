@@ -2,8 +2,36 @@ _original_find_spec = PathFinder.find_spec
 
 # well after the bootstrap process, and before we've patched, so it's safe to
 # import normally here
-import sysconfig
 import sys
+
+# Resolve the **host** stdlib path from `sys.base_prefix` instead of asking
+# sysconfig.
+#
+# The patched find_spec wants to inject `sys.build_path` *just before the
+# stdlib entry of `sys.path`*, so pip/setuptools/etc. can resolve modules from
+# the build Python's site-packages without seeing them as installed for the
+# cross interpreter. We need the **host** stdlib path here (not the build
+# Python's), because crossenv's site.py explicitly removes the build Python's
+# stdlib from `sys.path` before any of this runs — so looking up the build
+# stdlib in `sys.path` always misses, and `sys.build_path` is never inserted.
+#
+# Previously this was done with `sysconfig.get_path('stdlib')`, which after
+# crossenv's sysconfig patches returns the host stdlib. On Python 3.14 that
+# call recurses into half-initialized sysconfig via the lazy
+# `_init_config_vars` path (importing `_sysconfigdata__*` re-enters find_spec,
+# which calls `sysconfig.get_path` again, raising
+# `AttributeError: 'installed_base'`). We also can't eagerly initialize
+# sysconfig here, because crossenv's `sysconfig-patch.py.tmpl` asserts
+# `_CONFIG_VARS is None` at patch time.
+#
+# `sys.base_prefix` is set from `PYTHONHOME` at interpreter startup (the
+# cross-python wrapper sets it to the host Python install). The host stdlib
+# is reliably at `<base_prefix>/lib/python<X.Y>` for the standard CPython
+# layouts we support, which is exactly the entry crossenv leaves in
+# `sys.path`.
+_HOST_STDLIB = "{}/lib/python{}.{}".format(
+    sys.base_prefix, sys.version_info[0], sys.version_info[1]
+)
 
 @classmethod
 def _PathFinder_find_spec(cls, fullname, path=None, target=None):
@@ -15,10 +43,9 @@ def _PathFinder_find_spec(cls, fullname, path=None, target=None):
     environments."""
 
     if path is None:
-        stdlib = sysconfig.get_path('stdlib')
         path = list(sys.path)
         try:
-            i = path.index(stdlib)
+            i = path.index(_HOST_STDLIB)
             path[i:i] = sys.build_path
         except ValueError:
             pass
