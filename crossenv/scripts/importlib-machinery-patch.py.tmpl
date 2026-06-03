@@ -2,22 +2,28 @@ _original_find_spec = PathFinder.find_spec
 
 # well after the bootstrap process, and before we've patched, so it's safe to
 # import normally here
-import sysconfig
+import os
 import sys
 
-# Resolve and cache the stdlib path before installing the PathFinder patch.
-# Python 3.14's sysconfig defers `_init_config_vars` until the first call to
-# get_path/get_paths/get_config_vars. If we let the patched find_spec be the
-# first thing to ask, that call triggers `_init_posix` -> `_get_sysconfigdata`
-# -> `import_module(_sysconfigdata__*)` -> PathFinder.find_spec (us, again) ->
-# sysconfig.get_path() -> recursion into half-initialized sysconfig, which
-# raises `AttributeError: 'installed_base'` from `_subst_vars` because
-# `_CONFIG_VARS` hasn't been populated yet.
+# Resolve the stdlib path from `os.__file__` instead of asking sysconfig.
 #
-# By forcing the resolve here, sysconfig is fully initialized once, the result
-# is constant for this interpreter, and the patched find_spec never has to
-# re-enter sysconfig.
-_STDLIB_PATH = sysconfig.get_path('stdlib')
+# On Python 3.14, sysconfig deferred `_init_config_vars` to first call. If
+# `_PathFinder_find_spec` is the first thing to call `sysconfig.get_path`,
+# that triggers `_init_posix` -> `_get_sysconfigdata` -> `import_module(...)`
+# -> `PathFinder.find_spec` (us again) -> `sysconfig.get_path()` -> recursion
+# into half-initialized sysconfig, raising `AttributeError: 'installed_base'`
+# from `_subst_vars` because `_CONFIG_VARS` hasn't been populated yet.
+#
+# We can't pre-resolve via sysconfig either: crossenv's `sysconfig-patch`
+# asserts `_CONFIG_VARS is None` at patch time, so initializing sysconfig
+# here breaks that patch's invariant downstream.
+#
+# `os.__file__` is the path to the loaded `os.py` from the build interpreter's
+# stdlib, and every standard CPython layout places that file at
+# `<stdlib>/os.py`. By the time this template runs `os` has already been
+# imported (see crossenv's site.py), so `os.__file__` is available and
+# stable for the lifetime of the interpreter.
+_STDLIB_PATH = os.path.dirname(os.path.abspath(os.__file__))
 
 @classmethod
 def _PathFinder_find_spec(cls, fullname, path=None, target=None):
